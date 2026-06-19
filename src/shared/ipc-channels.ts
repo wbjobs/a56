@@ -6,6 +6,8 @@ export const IPC_CHANNELS = {
   GET_FILES: 'sync:get-files',
   GET_CONFLICTS: 'sync:get-conflicts',
   RESOLVE_CONFLICT: 'sync:resolve-conflict',
+  RESOLVE_ALL_CONFLICTS: 'sync:resolve-all-conflicts',
+  RESOLVE_CONFLICTS_BY_PEER: 'sync:resolve-conflicts-by-peer',
   GET_PEERS: 'sync:get-peers',
   GET_EVENTS: 'sync:get-events',
   ON_SYNC_STATUS: 'sync:on-status',

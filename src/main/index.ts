@@ -81,6 +81,20 @@ const setupIpc = (): void => {
       return syncEngine.getConflicts();
     }
   );
+  ipcMain.handle(
+    IPC_CHANNELS.RESOLVE_ALL_CONFLICTS,
+    async (_e, resolution: 'local' | 'remote' | 'merged') => {
+      const count = await syncEngine.resolveAllConflicts(resolution);
+      return { count, conflicts: syncEngine.getConflicts() };
+    }
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.RESOLVE_CONFLICTS_BY_PEER,
+    async (_e, peerId: string, resolution: 'local' | 'remote' | 'merged') => {
+      const count = await syncEngine.resolveConflictsByPeer(peerId, resolution);
+      return { count, conflicts: syncEngine.getConflicts() };
+    }
+  );
   ipcMain.handle(IPC_CHANNELS.GET_PEERS, () => syncEngine.getPeers());
   ipcMain.handle(IPC_CHANNELS.GET_EVENTS, () => syncEngine.getEvents());
   ipcMain.handle(IPC_CHANNELS.SELECT_FOLDER, async () => {

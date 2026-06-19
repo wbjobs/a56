@@ -81,6 +81,7 @@ export class DatabaseManager {
     hash: string;
     size: number;
     modified_at: number;
+    last_updated: number;
     version_vector: string;
     last_modifier: string;
     is_deleted: number;
@@ -90,6 +91,7 @@ export class DatabaseManager {
       hash: row.hash,
       size: row.size,
       modifiedAt: row.modified_at,
+      lastUpdated: row.last_updated,
       versionVector: JSON.parse(row.version_vector) as VersionVector,
       lastModifier: row.last_modifier,
       isDeleted: row.is_deleted === 1
@@ -134,6 +136,14 @@ export class DatabaseManager {
     return rows.map((r) => this.rowToFileMetadata(r as never));
   }
 
+  getFilesSince(sinceTimestamp: number): FileMetadata[] {
+    if (!this.db) throw new Error('Database not initialized');
+    const rows = this.db
+      .prepare('SELECT * FROM files WHERE last_updated >= ? ORDER BY last_updated ASC')
+      .all(sinceTimestamp);
+    return rows.map((r) => this.rowToFileMetadata(r as never));
+  }
+
   deleteFile(filePath: string): void {
     if (!this.db) throw new Error('Database not initialized');
     this.db.prepare('DELETE FROM files WHERE path = ?').run(filePath);
@@ -161,6 +171,22 @@ export class DatabaseManager {
   resolveConflict(id: string, resolution: 'local' | 'remote' | 'merged'): void {
     if (!this.db) throw new Error('Database not initialized');
     this.db.prepare('UPDATE conflicts SET resolved = 1, resolution = ? WHERE id = ?').run(resolution, id);
+  }
+
+  resolveAllConflicts(resolution: 'local' | 'remote' | 'merged'): number {
+    if (!this.db) throw new Error('Database not initialized');
+    const result = this.db
+      .prepare("UPDATE conflicts SET resolved = 1, resolution = ? WHERE resolved = 0")
+      .run(resolution);
+    return result.changes;
+  }
+
+  resolveConflictsByPeer(peerId: string, resolution: 'local' | 'remote' | 'merged'): number {
+    if (!this.db) throw new Error('Database not initialized');
+    const result = this.db
+      .prepare("UPDATE conflicts SET resolved = 1, resolution = ? WHERE resolved = 0 AND remote_node_id = ?")
+      .run(resolution, peerId);
+    return result.changes;
   }
 
   getConflicts(onlyUnresolved = true): ConflictInfo[] {

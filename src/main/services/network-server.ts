@@ -22,6 +22,7 @@ export interface NetworkServerHandlers {
   getNodeId: () => string;
   getNodeName: () => string;
   getAllFiles: () => FileMetadata[];
+  getFilesSince: (since: number) => FileMetadata[];
   getFileMetadata: (relPath: string) => FileMetadata | null;
   onRemoteFileChange: (metadata: FileMetadata, senderNodeId: string) => Promise<'updated' | 'conflict' | 'ignored'>;
   onRemoteFileDelete: (relPath: string, versionVector: VersionVector, senderNodeId: string) => Promise<'updated' | 'conflict' | 'ignored'>;
@@ -87,7 +88,16 @@ export class NetworkServer {
 
     this.app.get('/files', (req, res) => {
       if (!this.handlers) return res.status(500).json({ error: 'not initialized' });
-      res.json({ files: this.handlers.getAllFiles() });
+      const sinceStr = req.query.since as string | undefined;
+      if (sinceStr) {
+        const since = parseInt(sinceStr, 10);
+        if (!isNaN(since) && since > 0) {
+          const files = this.handlers.getFilesSince(since);
+          res.json({ files, incremental: true, since });
+          return;
+        }
+      }
+      res.json({ files: this.handlers.getAllFiles(), incremental: false });
     });
 
     this.app.get('/files/:filePath(*)', (req, res) => {

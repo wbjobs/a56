@@ -230,6 +230,25 @@ export class NetworkClient {
     }
   }
 
+  async fetchPeerFilesSince(peer: PeerNode, since: number): Promise<{ files: FileMetadata[]; incremental: boolean }> {
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const res = await fetch(`http://${peer.address}:${peer.port}/files?since=${since}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      if (!res.ok) return { files: [], incremental: false };
+      const data = (await res.json()) as { files: FileMetadata[]; incremental?: boolean };
+      return {
+        files: data.files,
+        incremental: data.incremental === true
+      };
+    } catch {
+      return { files: [], incremental: false };
+    }
+  }
+
   async downloadFile(peer: PeerNode, relPath: string): Promise<Buffer | null> {
     try {
       const encodedPath = encodeURIComponent(relPath);

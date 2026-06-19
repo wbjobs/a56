@@ -36,6 +36,7 @@ export class SyncEngine {
   private syncTimer: NodeJS.Timeout | null = null;
   private listeners: Map<string, Set<EventCallback>> = new Map();
   private inFlightFiles = new Set<string>();
+  private peerLastSyncAt = new Map<string, number>();
 
   constructor() {
     this.nodeId = this.initNodeId();
@@ -134,6 +135,7 @@ export class SyncEngine {
       getNodeId: () => this.nodeId,
       getNodeName: () => this.nodeName,
       getAllFiles: () => dbManager.getAllFiles(),
+      getFilesSince: (since) => dbManager.getFilesSince(since),
       getFileMetadata: (p) => dbManager.getFile(p),
       onRemoteFileChange: (meta, sender) => this.handleRemoteFileChange(meta, sender),
       onRemoteFileDelete: (p, vv, sender) => this.handleRemoteFileDelete(p, vv, sender),
@@ -231,11 +233,13 @@ export class SyncEngine {
       }
 
       const newVV = this.bumpLocalVersion(existing?.versionVector);
+      const now = Date.now();
       const metadata: FileMetadata = {
         path: relPath,
         hash,
         size,
         modifiedAt,
+        lastUpdated: now,
         versionVector: newVV,
         lastModifier: this.nodeId,
         isDeleted: false
@@ -269,10 +273,12 @@ export class SyncEngine {
       }
 
       const newVV = this.bumpLocalVersion(existing.versionVector);
+      const now = Date.now();
       const metadata: FileMetadata = {
         ...existing,
         isDeleted: true,
-        modifiedAt: Date.now(),
+        modifiedAt: now,
+        lastUpdated: now,
         versionVector: newVV,
         lastModifier: this.nodeId
       };
@@ -494,12 +500,36 @@ export class SyncEngine {
 
   private async syncWithPeer(peer: PeerNode): Promise<void> {
     if (!this.syncFolder) return;
-    const remoteFiles = await networkClient.fetchPeerFiles(peer);
-    if (remoteFiles.length === 0) return;
+
+    const lastSyncAt = this.peerLastSyncAt.get(peer.id) || 0;
+    const isFirstSync = lastSyncAt === 0;
+
+    let remoteFiles: FileMetadata[] = [];
+    let usedIncremental = false;
+
+    if (lastSyncAt > 0) {
+      const result = await networkClient.fetchPeerFilesSince(peer, lastSyncAt);
+      remoteFiles = result.files;
+      usedIncremental = result.incremental;
+    }
+
+    if (remoteFiles.length === 0 && !usedIncremental) {
+      remoteFiles = await networkClient.fetchPeerFiles(peer);
+    }
+
+    if (remoteFiles.length === 0) {
+      this.peerLastSyncAt.set(peer.id, Date.now());
+      return;
+    }
 
     const localMap = new Map(dbManager.getAllFiles().map((f) => [f.path, f]));
+    let maxLastUpdated = lastSyncAt;
 
     for (const remote of remoteFiles) {
+      if (remote.lastUpdated > maxLastUpdated) {
+        maxLastUpdated = remote.lastUpdated;
+      }
+
       const local = localMap.get(remote.path);
       const cmp = local
         ? compareVersionVectors(local.versionVector, remote.versionVector)
@@ -526,6 +556,21 @@ export class SyncEngine {
           await networkClient.uploadFile(peer, local.path, abs, local);
         }
       }
+    }
+
+    this.peerLastSyncAt.set(peer.id, maxLastUpdated + 1);
+
+    if (isFirstSync) {
+      this.addEvent('sync-completed', `与 ${peer.name} 完成首次全量同步（${remoteFiles.length} 个文件）`, {
+        peer: peer.name,
+        count: remoteFiles.length
+      });
+    } else if (usedIncremental && remoteFiles.length > 0) {
+      this.addEvent('sync-completed', `与 ${peer.name} 完成增量同步（${remoteFiles.length} 个变更文件）`, {
+        peer: peer.name,
+        count: remoteFiles.length,
+        incremental: true
+      });
     }
 
     this.lastSyncTime = Date.now();
@@ -601,6 +646,54 @@ export class SyncEngine {
     this.addEvent('sync-completed', `冲突已解决: ${conflict.path} (${resolution === 'local' ? '保留本地' : resolution === 'remote' ? '保留远程' : '已合并'})`);
     this.emit('conflicts-changed');
     this.emit('files-changed');
+  }
+
+  async resolveAllConflicts(resolution: 'local' | 'remote' | 'merged'): Promise<number> {
+    const conflicts = dbManager.getConflicts(true);
+    if (conflicts.length === 0) return 0;
+
+    let resolved = 0;
+    for (const conflict of conflicts) {
+      try {
+        await this.resolveConflict(conflict.id, resolution);
+        resolved++;
+      } catch {
+        // skip individual failures
+      }
+    }
+
+    const label = resolution === 'local' ? '全部保留本地' : resolution === 'remote' ? '全部保留远程' : '全部合并';
+    this.addEvent('sync-completed', `批量解决冲突：${label}（${resolved}/${conflicts.length} 个）`, {
+      resolution,
+      count: resolved
+    });
+
+    return resolved;
+  }
+
+  async resolveConflictsByPeer(peerId: string, resolution: 'local' | 'remote' | 'merged'): Promise<number> {
+    const conflicts = dbManager.getConflicts(true).filter((c) => c.remoteNodeId === peerId);
+    if (conflicts.length === 0) return 0;
+
+    let resolved = 0;
+    for (const conflict of conflicts) {
+      try {
+        await this.resolveConflict(conflict.id, resolution);
+        resolved++;
+      } catch {
+        // skip
+      }
+    }
+
+    const peerName = this.getPeers().find((p) => p.id === peerId)?.name || peerId.slice(0, 8);
+    const label = resolution === 'local' ? '保留本地' : resolution === 'remote' ? '保留远程' : '合并';
+    this.addEvent('sync-completed', `批量解决 ${peerName} 的冲突：${label}（${resolved} 个）`, {
+      peer: peerName,
+      resolution,
+      count: resolved
+    });
+
+    return resolved;
   }
 }
 

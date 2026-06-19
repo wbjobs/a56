@@ -144,6 +144,17 @@ export default function App() {
     }
   };
 
+  const handleResolveAll = async (
+    resolution: 'local' | 'remote' | 'merged'
+  ): Promise<void> => {
+    setResolving('all');
+    try {
+      await window.lanSync.resolveAllConflicts(resolution);
+    } finally {
+      setResolving(null);
+    }
+  };
+
   const filteredFiles = useMemo(() => {
     if (!searchFiles) return store.files;
     const q = searchFiles.toLowerCase();
@@ -274,6 +285,24 @@ export default function App() {
             <div className="panel-title">
               ⚠️ 冲突文件 <span className={`badge ${conflicts.length > 0 ? 'badge-warning' : 'badge-success'}`}>{conflicts.length}</span>
             </div>
+            {conflicts.length > 0 && (
+              <div className="conflict-bulk-actions">
+                <button
+                  className="btn btn-primary btn-sm"
+                  disabled={resolving === 'all'}
+                  onClick={() => handleResolveAll('local')}
+                >
+                  🖥️ 全部保留本地
+                </button>
+                <button
+                  className="btn btn-warning btn-sm"
+                  disabled={resolving === 'all'}
+                  onClick={() => handleResolveAll('remote')}
+                >
+                  🌐 全部保留远程
+                </button>
+              </div>
+            )}
           </div>
           <div className="panel-content">
             {!initialized ? (

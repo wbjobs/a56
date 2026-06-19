@@ -17,6 +17,10 @@ const api = {
   getConflicts: (): Promise<ConflictInfo[]> => ipcRenderer.invoke(IPC_CHANNELS.GET_CONFLICTS),
   resolveConflict: (id: string, resolution: 'local' | 'remote' | 'merged'): Promise<void> =>
     ipcRenderer.invoke(IPC_CHANNELS.RESOLVE_CONFLICT, id, resolution),
+  resolveAllConflicts: (resolution: 'local' | 'remote' | 'merged'): Promise<number> =>
+    ipcRenderer.invoke(IPC_CHANNELS.RESOLVE_ALL_CONFLICTS, resolution),
+  resolveConflictsByPeer: (peerId: string, resolution: 'local' | 'remote' | 'merged'): Promise<number> =>
+    ipcRenderer.invoke(IPC_CHANNELS.RESOLVE_CONFLICTS_BY_PEER, peerId, resolution),
   getPeers: (): Promise<PeerNode[]> => ipcRenderer.invoke(IPC_CHANNELS.GET_PEERS),
   getEvents: (): Promise<SyncEvent[]> => ipcRenderer.invoke(IPC_CHANNELS.GET_EVENTS),
   selectFolder: (): Promise<string | null> => ipcRenderer.invoke(IPC_CHANNELS.SELECT_FOLDER),

@@ -11,6 +11,7 @@ export interface FileMetadata {
   hash: string;
   size: number;
   modifiedAt: number;
+  lastUpdated: number;
   versionVector: VersionVector;
   lastModifier: NodeId;
   isDeleted: boolean;
