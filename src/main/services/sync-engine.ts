@@ -356,7 +356,8 @@ export class SyncEngine {
 
     const metadata: FileMetadata = {
       ...remote,
-      versionVector: vv
+      versionVector: vv,
+      lastUpdated: Date.now()
     };
 
     dbManager.upsertFile(metadata);
@@ -394,7 +395,8 @@ export class SyncEngine {
         {
           ...local,
           isDeleted: true,
-          versionVector: remoteVV
+          versionVector: remoteVV,
+          lastUpdated: Date.now()
         },
         senderNodeId,
         local
@@ -405,13 +407,15 @@ export class SyncEngine {
     const absPath = absolutePath(this.syncFolder, relPath);
     deleteFileSafely(absPath);
 
+    const now = Date.now();
     const vv = mergeVersionVectors(local.versionVector, remoteVV);
     dbManager.upsertFile({
       ...local,
       isDeleted: true,
       versionVector: vv,
       lastModifier: senderNodeId,
-      modifiedAt: Date.now()
+      modifiedAt: now,
+      lastUpdated: now
     });
     this.emit('files-changed');
 
@@ -612,11 +616,13 @@ export class SyncEngine {
       if (fs.existsSync(abs)) {
         const newVV = this.bumpLocalVersion(local.versionVector);
         const { size, modifiedAt, hash } = await getFileStats(abs);
+        const now = Date.now();
         const meta: FileMetadata = {
           ...local,
           hash,
           size,
           modifiedAt,
+          lastUpdated: now,
           versionVector: newVV,
           lastModifier: this.nodeId
         };
@@ -628,11 +634,13 @@ export class SyncEngine {
       const abs = absolutePath(this.syncFolder, conflict.path);
       if (fs.existsSync(abs)) {
         const { size, modifiedAt, hash } = await getFileStats(abs);
+        const now = Date.now();
         const meta: FileMetadata = {
           ...local,
           hash,
           size,
           modifiedAt,
+          lastUpdated: now,
           versionVector: this.bumpLocalVersion(newVV),
           lastModifier: this.nodeId
         };
